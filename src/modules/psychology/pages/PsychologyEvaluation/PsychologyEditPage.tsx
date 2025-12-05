@@ -31,6 +31,13 @@ import {
   EVALUATION_TYPE_OPTIONS,
   DEVELOPMENT_LEVEL_OPTIONS,
 } from "../../models/psychology.model";
+import {
+  validateField,
+  validateStep,
+  validateForm,
+  isStepComplete,
+  canAccessStep,
+} from "../../utils/validations";
 
 interface Student {
   id: string;
@@ -213,76 +220,10 @@ export function PsychologyEditPage() {
   }, []);
 
   // Funciones de validación
-  const validateField = (
-    field: keyof CreatePsychologicalEvaluationDto,
-    value: string | number | boolean | undefined
-  ): string | null => {
-    switch (field) {
-      case "studentId":
-        if (!value || value === "") return "Selecciona un estudiante";
-        break;
-      case "classroomId":
-        if (!value || value === "") return "Selecciona un aula";
-        break;
-      case "institutionId":
-        if (!value || value === "") return "Selecciona una institución";
-        break;
-      case "evaluationDate":
-        if (!value || value === "") return "Selecciona una fecha";
-        break;
-      case "academicYear":
-        // Campo readonly, no necesita validación
-        break;
-      case "evaluationType":
-        if (!value || value === "") return "Selecciona un tipo de evaluación";
-        break;
-      case "evaluationReason":
-        if (!value || value === "") return "Describe el motivo de la evaluación";
-        if (typeof value === "string" && value.length < 10)
-          return "El motivo debe tener al menos 10 caracteres";
-        break;
-      case "emotionalDevelopment":
-      case "socialDevelopment":
-      case "cognitiveDevelopment":
-      case "motorDevelopment":
-        if (!value || value === "") return "Selecciona un nivel de desarrollo";
-        break;
-      case "observations":
-        if (!value || value === "") return "Ingresa las observaciones";
-        if (typeof value === "string" && value.length < 20)
-          return "Las observaciones deben tener al menos 20 caracteres";
-        break;
-      case "recommendations":
-        if (value && typeof value === "string" && value.length > 0 && value.length < 10)
-          return "Las recomendaciones deben tener al menos 10 caracteres";
-        break;
-      case "followUpFrequency":
-        if (formData.requiresFollowUp && (!value || value === ""))
-          return "Especifica la frecuencia de seguimiento";
-        break;
-      case "evaluatedBy":
-        if (!value || value === "") return "Selecciona un evaluador";
-        break;
-    }
-    return null;
-  };
-
   const validateCurrentStep = (): boolean => {
     const step = steps[currentStep];
-    const errors: Record<string, string> = {};
-    let hasErrors = false;
-
-    step.fields.forEach((field) => {
-      const value = formData[field as keyof CreatePsychologicalEvaluationDto];
-      const error = validateField(
-        field as keyof CreatePsychologicalEvaluationDto,
-        value
-      );
-      if (error) {
-        errors[field] = error;
-        hasErrors = true;
-      }
-    });
+    const errors = validateStep(step.fields, formData);
+    const hasErrors = Object.keys(errors).length > 0;
 
     setFieldErrors(errors);
     return !hasErrors;
@@ -298,36 +239,29 @@ export function PsychologyEditPage() {
     }));
     setIsDirty(true);
 
-    // Validar campo en tiempo real
-    const error = validateField(field, value);
+    // Validar campo en tiempo real usando la función centralizada
+    const error = validateField(field, value, formData);
     setFieldErrors((prev) => ({
       ...prev,
       [field]: error || "",
     }));
   };
 
-  const isStepComplete = (stepIndex: number): boolean => {
-    const step = steps[stepIndex];
-    return step.fields.every((field) => {
-      const value = formData[field as keyof CreatePsychologicalEvaluationDto];
-      if (field === "requiresFollowUp") return true;
-      if (field === "followUpFrequency")
-        return !formData.requiresFollowUp || value !== "";
-      return value !== "" && value !== undefined && value !== null;
-    });
-  };
-
   const canProceedToNext = (): boolean => {
-    return isStepComplete(currentStep);
+    return isStepComplete(steps[currentStep].fields, formData);
   };
 
-  const canAccessStep = (stepIndex: number): boolean => {
-    for (let i = 0; i < stepIndex; i++) {
-      if (!isStepComplete(i)) {
-        return false;
-      }
-    }
-    return true;
+  const canAccessStepHelper = (stepIndex: number): boolean => {
+    return canAccessStep(stepIndex, steps, formData);
+  };
+
+  // Wrappers locales para usar en el JSX (firma conveniente: index -> boolean)
+  const isStepCompleteLocal = (stepIndex: number): boolean => {
+    return isStepComplete(steps[stepIndex].fields, formData);
+  };
+
+  const canAccessStepLocal = (stepIndex: number): boolean => {
+    return canAccessStep(stepIndex, steps, formData);
   };
 
   const handleNext = async () => {
@@ -355,7 +289,7 @@ export function PsychologyEditPage() {
   };
 
   const handleStepClick = (stepIndex: number) => {
-    if (canAccessStep(stepIndex)) {
+    if (canAccessStepHelper(stepIndex)) {
       setCurrentStep(stepIndex);
     }
   };
@@ -363,26 +297,11 @@ export function PsychologyEditPage() {
   const handleSubmit = async () => {
     if (!evaluation?.id) return;
 
-    // Validar todos los pasos antes de enviar
-    let allValid = true;
-    const allErrors: Record<string, string> = {};
-
-    steps.forEach((step) => {
-      step.fields.forEach((field) => {
-        const value = formData[field as keyof CreatePsychologicalEvaluationDto];
-        const error = validateField(
-          field as keyof CreatePsychologicalEvaluationDto,
-          value
-        );
-        if (error) {
-          allErrors[field] = error;
-          allValid = false;
-        }
-      });
-    });
-
-    if (!allValid) {
-      setFieldErrors(allErrors);
+    // Validar todo el formulario usando la función centralizada
+    const validationResult = validateForm(steps, formData);
+    
+    if (!validationResult.isValid) {
+      setFieldErrors(validationResult.errors);
       showErrorAlert(
         "Formulario incompleto",
         "Por favor, corrige todos los errores antes de guardar la evaluación."
@@ -550,13 +469,13 @@ export function PsychologyEditPage() {
                   <div key={step.id} className="relative">
                     <button
                       onClick={() => handleStepClick(index)}
-                      disabled={!canAccessStep(index)}
+                      disabled={!canAccessStepLocal(index)}
                       className={`w-full flex items-center space-x-3 p-3 rounded-lg transition-all ${
                         currentStep === index
                           ? "bg-blue-50 text-blue-700"
-                          : isStepComplete(index)
+                          : isStepCompleteLocal(index)
                           ? "bg-green-50 text-green-700 hover:bg-green-100"
-                          : canAccessStep(index)
+                          : canAccessStepLocal(index)
                           ? "bg-gray-50 text-gray-600 hover:bg-gray-100"
                           : "bg-gray-100 text-gray-400 cursor-not-allowed"
                       }`}
@@ -565,14 +484,14 @@ export function PsychologyEditPage() {
                         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                           currentStep === index
                             ? "bg-blue-600 text-white"
-                            : isStepComplete(index)
+                            : isStepCompleteLocal(index)
                             ? "bg-green-600 text-white"
-                            : canAccessStep(index)
+                            : canAccessStepLocal(index)
                             ? "bg-gray-300 text-gray-600"
                             : "bg-gray-200 text-gray-400"
                         }`}
                       >
-                        {isStepComplete(index) && currentStep !== index ? (
+                        {isStepCompleteLocal(index) && currentStep !== index ? (
                           <CheckCircle className="w-5 h-5" />
                         ) : (
                           <span className="text-sm font-medium">
@@ -583,9 +502,9 @@ export function PsychologyEditPage() {
                       <div className="flex-1 text-left">
                         <div className="font-medium">{step.title}</div>
                         <div className="text-sm opacity-75">
-                          {isStepComplete(index) 
+                          {isStepCompleteLocal(index) 
                             ? "Completado" 
-                            : canAccessStep(index) 
+                            : canAccessStepLocal(index)
                             ? "Disponible" 
                             : "Bloqueado"}
                         </div>
@@ -598,11 +517,11 @@ export function PsychologyEditPage() {
 
               {/* Barra de progreso */}
               <div className="mt-6">
-                <div className="flex justify-between text-sm text-gray-600 mb-2">
+                    <div className="flex justify-between text-sm text-gray-600 mb-2">
                   <span>Progreso</span>
                   <span>
                     {Math.round(
-                      (steps.filter((_, index) => isStepComplete(index)).length / steps.length) * 100
+                      (steps.filter((_, index) => isStepCompleteLocal(index)).length / steps.length) * 100
                     )}%
                   </span>
                 </div>
@@ -611,7 +530,7 @@ export function PsychologyEditPage() {
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                     style={{
                       width: `${
-                        (steps.filter((_, index) => isStepComplete(index)).length / steps.length) * 100
+                        (steps.filter((_, index) => isStepCompleteLocal(index)).length / steps.length) * 100
                       }%`,
                     }}
                   />
@@ -1171,14 +1090,14 @@ export function PsychologyEditPage() {
                               {steps.map((step, stepIndex) => (
                                 <div key={step.id} className="flex items-center gap-2">
                                   <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
-                                    isStepComplete(stepIndex) 
+                                    isStepCompleteLocal(stepIndex) 
                                       ? 'bg-green-500 text-white' 
                                       : 'bg-gray-300 text-gray-600'
                                   }`}>
-                                    {isStepComplete(stepIndex) ? '✓' : stepIndex + 1}
+                                    {isStepCompleteLocal(stepIndex) ? '✓' : stepIndex + 1}
                                   </div>
                                   <span className={`text-sm ${
-                                    isStepComplete(stepIndex) ? 'text-green-700 font-medium' : 'text-gray-600'
+                                    isStepCompleteLocal(stepIndex) ? 'text-green-700 font-medium' : 'text-gray-600'
                                   }`}>
                                     {step.title}
                                   </span>
@@ -1188,13 +1107,13 @@ export function PsychologyEditPage() {
                             <div className="mt-3">
                               <div className="flex justify-between text-xs text-gray-600 mb-1">
                                 <span>Completado</span>
-                                <span>{Math.round(((steps.filter((_, index) => isStepComplete(index)).length) / steps.length) * 100)}%</span>
+                                <span>{Math.round(((steps.filter((_, index) => isStepCompleteLocal(index)).length) / steps.length) * 100)}%</span>
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
                                   className="bg-green-500 h-2 rounded-full transition-all duration-300"
                                   style={{
-                                    width: `${((steps.filter((_, index) => isStepComplete(index)).length) / steps.length) * 100}%`
+                                    width: `${((steps.filter((_, index) => isStepCompleteLocal(index)).length) / steps.length) * 100}%`
                                   }}
                                 />
                               </div>

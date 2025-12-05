@@ -30,6 +30,13 @@ import {
   EVALUATION_TYPE_OPTIONS,
   DEVELOPMENT_LEVEL_OPTIONS,
 } from "../../models/psychology.model";
+import {
+  validateField,
+  validateStep,
+  validateForm,
+  isStepComplete,
+  canAccessStep,
+} from "../../utils/validations";
 
 interface Student {
   id: string;
@@ -174,105 +181,10 @@ export function PsychologyCreatePage() {
   }, []);
 
   // Funciones de validación
-  const validateField = (
-    field: keyof CreatePsychologicalEvaluationDto,
-    value: string | number | boolean | undefined
-  ): string | null => {
-    switch (field) {
-      case "studentId":
-        return !value ? "Debe seleccionar un estudiante" : null;
-      case "classroomId":
-        return !value ? "Debe seleccionar un aula" : null;
-      case "institutionId":
-        return !value ? "Debe seleccionar una institución" : null;
-      case "evaluationDate": {
-        if (!value) return "La fecha de evaluación es requerida";
-        const selectedDate = new Date(String(value));
-        const today = new Date();
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(today.getFullYear() - 1);
-        if (selectedDate > today) return "La fecha no puede ser futura";
-        if (selectedDate < oneYearAgo)
-          return "La fecha no puede ser mayor a un año atrás";
-        return null;
-      }
-      case "academicYear":
-        // Campo readonly, no necesita validación
-        return null;
-      case "evaluationReason": {
-        if (!value) return "El motivo de evaluación es requerido";
-        const stringValue = String(value);
-        const trimmedValue = stringValue.trim();
-        if (trimmedValue.length === 0)
-          return "No se permiten solo espacios en blanco";
-        if (stringValue !== trimmedValue)
-          return "No debe iniciar o terminar con espacios en blanco";
-        if (trimmedValue.length < 10)
-          return `Mínimo 10 caracteres requeridos (${trimmedValue.length}/10)`;
-        if (stringValue.length > 500)
-          return `Máximo 500 caracteres permitidos (${stringValue.length}/500)`;
-        return null;
-      }
-      case "observations": {
-        if (!value) return "Las observaciones son requeridas";
-        const stringValue = String(value);
-        const trimmedValue = stringValue.trim();
-        if (trimmedValue.length === 0)
-          return "No se permiten solo espacios en blanco";
-        if (stringValue !== trimmedValue)
-          return "No debe iniciar o terminar con espacios en blanco";
-        if (trimmedValue.length < 20)
-          return `Mínimo 20 caracteres requeridos (${trimmedValue.length}/20)`;
-        if (stringValue.length > 1000)
-          return `Máximo 1000 caracteres permitidos (${stringValue.length}/1000)`;
-        return null;
-      }
-      case "recommendations": {
-        if (!value) return "Las recomendaciones son requeridas";
-        const stringValue = String(value);
-        const trimmedValue = stringValue.trim();
-        if (trimmedValue.length === 0)
-          return "No se permiten solo espacios en blanco";
-        if (stringValue !== trimmedValue)
-          return "No debe iniciar o terminar con espacios en blanco";
-        if (trimmedValue.length < 20)
-          return `Mínimo 20 caracteres requeridos (${trimmedValue.length}/20)`;
-        if (stringValue.length > 1000)
-          return `Máximo 1000 caracteres permitidos (${stringValue.length}/1000)`;
-        return null;
-      }
-      case "followUpFrequency":
-        return formData.requiresFollowUp && !value
-          ? "Debe especificar la frecuencia de seguimiento"
-          : null;
-      case "evaluatedBy":
-        return !value ? "Debe seleccionar un evaluador" : null;
-      case "emotionalDevelopment":
-      case "socialDevelopment":
-      case "cognitiveDevelopment":
-      case "motorDevelopment":
-        return !value ? "Debe seleccionar un nivel de desarrollo" : null;
-      default:
-        return null;
-    }
-  };
-
   const validateCurrentStep = (): boolean => {
     const step = steps[currentStep];
-    const errors: Record<string, string> = {};
-    let hasErrors = false;
-
-    step.fields.forEach((field) => {
-      const value = formData[field as keyof CreatePsychologicalEvaluationDto];
-      const error = validateField(
-        field as keyof CreatePsychologicalEvaluationDto,
-        value
-      );
-      if (error) {
-        errors[field] = error;
-        hasErrors = true;
-      }
-    });
+    const errors = validateStep(step.fields, formData);
+    const hasErrors = Object.keys(errors).length > 0;
 
     setFieldErrors(errors);
     return !hasErrors;
@@ -289,36 +201,25 @@ export function PsychologyCreatePage() {
 
     setIsDirty(true);
 
-    // Validar campo en tiempo real
-    const error = validateField(field, value);
+    // Validar campo en tiempo real usando la función centralizada
+    const error = validateField(field, value, formData);
     setFieldErrors((prev) => ({
       ...prev,
       [field]: error || "",
     }));
   };
 
-  const isStepComplete = (stepIndex: number): boolean => {
-    const step = steps[stepIndex];
-    return step.fields.every((field) => {
-      const value = formData[field as keyof CreatePsychologicalEvaluationDto];
-      if (field === "requiresFollowUp") return true;
-      if (field === "followUpFrequency")
-        return !formData.requiresFollowUp || value !== "";
-      return value !== "" && value !== undefined && value !== null;
-    });
-  };
-
   const canProceedToNext = (): boolean => {
-    return isStepComplete(currentStep);
+    return isStepComplete(steps[currentStep].fields, formData);
   };
 
-  const canAccessStep = (stepIndex: number): boolean => {
-    for (let i = 0; i < stepIndex; i++) {
-      if (!isStepComplete(i)) {
-        return false;
-      }
-    }
-    return true;
+  // Wrappers locales para mantener compatibilidad con llamadas existentes
+  const isStepCompleteLocal = (stepIndex: number): boolean => {
+    return isStepComplete(steps[stepIndex].fields, formData);
+  };
+
+  const canAccessStepLocal = (stepIndex: number): boolean => {
+    return canAccessStep(stepIndex, steps, formData);
   };
 
   const handleNext = async () => {
@@ -346,32 +247,17 @@ export function PsychologyCreatePage() {
   };
 
   const handleStepClick = (stepIndex: number) => {
-    if (canAccessStep(stepIndex)) {
+    if (canAccessStepLocal(stepIndex)) {
       setCurrentStep(stepIndex);
     }
   };
 
   const handleSubmit = async () => {
-    // Validar todos los pasos antes de enviar
-    let allValid = true;
-    const allErrors: Record<string, string> = {};
-
-    steps.forEach((step) => {
-      step.fields.forEach((field) => {
-        const value = formData[field as keyof CreatePsychologicalEvaluationDto];
-        const error = validateField(
-          field as keyof CreatePsychologicalEvaluationDto,
-          value
-        );
-        if (error) {
-          allErrors[field] = error;
-          allValid = false;
-        }
-      });
-    });
-
-    if (!allValid) {
-      setFieldErrors(allErrors);
+    // Validar todo el formulario usando la función centralizada
+    const validationResult = validateForm(steps, formData);
+    
+    if (!validationResult.isValid) {
+      setFieldErrors(validationResult.errors);
       showErrorAlert(
         "Formulario incompleto",
         "Por favor, corrige todos los errores antes de guardar la evaluación."
@@ -589,13 +475,13 @@ export function PsychologyCreatePage() {
                   <div key={step.id} className="relative">
                     <button
                       onClick={() => handleStepClick(index)}
-                      disabled={!canAccessStep(index)}
+                      disabled={!canAccessStepLocal(index)}
                       className={`w-full flex items-center space-x-3 p-3 rounded-lg transition-all ${
                         currentStep === index
                           ? "bg-blue-50 text-blue-700"
-                          : isStepComplete(index)
+                          : isStepCompleteLocal(index)
                           ? "bg-green-50 text-green-700 hover:bg-green-100"
-                          : canAccessStep(index)
+                          : canAccessStepLocal(index)
                           ? "bg-gray-50 text-gray-600 hover:bg-gray-100"
                           : "bg-gray-100 text-gray-400 cursor-not-allowed"
                       }`}
@@ -604,14 +490,14 @@ export function PsychologyCreatePage() {
                         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                           currentStep === index
                             ? "bg-blue-600 text-white"
-                            : isStepComplete(index)
+                            : isStepCompleteLocal(index)
                             ? "bg-green-600 text-white"
-                            : canAccessStep(index)
+                            : canAccessStepLocal(index)
                             ? "bg-gray-300 text-gray-600"
                             : "bg-gray-200 text-gray-400"
                         }`}
                       >
-                        {isStepComplete(index) && currentStep !== index ? (
+                        {isStepCompleteLocal(index) && currentStep !== index ? (
                           <CheckCircle className="w-5 h-5" />
                         ) : (
                           <span className="text-sm font-medium">
@@ -622,9 +508,9 @@ export function PsychologyCreatePage() {
                       <div className="flex-1 text-left">
                         <div className="font-medium">{step.title}</div>
                         <div className="text-sm opacity-75">
-                          {isStepComplete(index)
+                          {isStepCompleteLocal(index)
                             ? "Completado"
-                            : canAccessStep(index)
+                            : canAccessStepLocal(index)
                             ? "Disponible"
                             : "Bloqueado"}
                         </div>
@@ -641,7 +527,7 @@ export function PsychologyCreatePage() {
                   <span>Progreso</span>
                   <span>
                     {Math.round(
-                      (steps.filter((_, index) => isStepComplete(index))
+                      (steps.filter((_, index) => isStepCompleteLocal(index))
                         .length /
                         steps.length) *
                         100
@@ -654,7 +540,7 @@ export function PsychologyCreatePage() {
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                     style={{
                       width: `${
-                        (steps.filter((_, index) => isStepComplete(index))
+                        (steps.filter((_, index) => isStepCompleteLocal(index))
                           .length /
                           steps.length) *
                         100
@@ -1503,18 +1389,18 @@ export function PsychologyCreatePage() {
                                 >
                                   <div
                                     className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
-                                      isStepComplete(stepIndex)
+                                      isStepCompleteLocal(stepIndex)
                                         ? "bg-green-500 text-white"
                                         : "bg-gray-300 text-gray-600"
                                     }`}
                                   >
-                                    {isStepComplete(stepIndex)
+                                    {isStepCompleteLocal(stepIndex)
                                       ? "✓"
                                       : stepIndex + 1}
                                   </div>
                                   <span
                                     className={`text-sm ${
-                                      isStepComplete(stepIndex)
+                                      isStepCompleteLocal(stepIndex)
                                         ? "text-green-700 font-medium"
                                         : "text-gray-600"
                                     }`}
@@ -1530,7 +1416,7 @@ export function PsychologyCreatePage() {
                                 <span>
                                   {Math.round(
                                     (steps.filter((_, index) =>
-                                      isStepComplete(index)
+                                      isStepCompleteLocal(index)
                                     ).length /
                                       steps.length) *
                                       100
@@ -1544,7 +1430,7 @@ export function PsychologyCreatePage() {
                                   style={{
                                     width: `${
                                       (steps.filter((_, index) =>
-                                        isStepComplete(index)
+                                        isStepCompleteLocal(index)
                                       ).length /
                                         steps.length) *
                                       100
