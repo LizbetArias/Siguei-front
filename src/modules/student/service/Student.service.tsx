@@ -12,7 +12,7 @@ import type {
      StudentWithInstitutionResponse,
 } from "../models/student.model";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://jubilant-engine-g444pxjvrx6c9pj4-9081.app.github.dev/api/v1";
+const API_URL = import.meta.env.VITE_API_URL || "https://micro-student-siguei.onrender.com/api/v1";
 
 export const studentsService = {
      async getAll(): Promise<Student[]> {

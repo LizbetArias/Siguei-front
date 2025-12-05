@@ -25,11 +25,32 @@ const formStyles = `
   .hover\\:text-green-900:hover { color: #14532d; }
 `;
 
+// ---------- Inicialización del formulario ----------
+// Estado inicial del formulario con valores por defecto
+const initialFormState: Omit<SpecialNeedsSupport, 'status'> = {
+  id: '',
+  studentId: '',
+  classroomId: '',
+  institutionId: '',
+  academicYear: new Date().getFullYear(),
+  diagnosis: '',
+  diagnosisDate: new Date().toISOString().split('T')[0],
+  diagnosedBy: '',
+  supportType: 'MOTOR',
+  description: '',
+  adaptationsRequired: [],
+  supportMaterials: [],
+  specialistInvolved: '',
+  progressNotes: '',
+  lastReviewDate: new Date().toISOString().split('T')[0],
+  nextReviewDate: new Date().toISOString().split('T')[0],
+};
+
 export function SpecialNeedsSupportEditPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
-  const [formData, setFormData] = useState<Omit<SpecialNeedsSupport, 'status'> | null>(null);
+  const [formData, setFormData] = useState<Omit<SpecialNeedsSupport, 'status'>>(initialFormState);
 
   const [originalStatus, setOriginalStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [adaptation, setAdaptation] = useState('');
@@ -136,13 +157,43 @@ export function SpecialNeedsSupportEditPage() {
       const { status, ...data } = support;
       
       // Merge the loaded data with the initial state to ensure all fields are present
-      setFormData(prev => ({
-        ...prev,
+      setFormData({
+        ...initialFormState,
         ...data,
         adaptationsRequired: data.adaptationsRequired || [],
         supportMaterials: data.supportMaterials || []
-      }));
+      });
       setOriginalStatus(status);
+      
+      // Cargar datos relacionados después de obtener el soporte
+      if (data.institutionId) {
+        // Cargar aulas de la institución
+        try {
+          const institutionData = await institutionService.getInstitutionById(data.institutionId);
+          setClassrooms(institutionData.classrooms.map((classroom: any) => ({
+            id: classroom.classroomId,
+            name: classroom.classroomName
+          })));
+          
+          // Si también tenemos un classroomId, cargar los estudiantes
+          if (data.classroomId) {
+            try {
+              const studentsData = await studentsService.getByClassroom(data.classroomId);
+              setStudents(studentsData.map((student: any) => ({
+                id: student.studentId,
+                name: `${student.personalInfo.names} ${student.personalInfo.lastNames}`
+              })));
+            } catch (studentError) {
+              console.error('Error loading students:', studentError);
+              setStudents([]);
+            }
+          }
+        } catch (institutionError) {
+          console.error('Error loading institution data:', institutionError);
+          setClassrooms([]);
+          setStudents([]);
+        }
+      }
     } catch (error) {
       console.error('Error loading support:', error);
       showErrorAlert('Error al cargar', 'No se pudo cargar la información del soporte.');
@@ -221,18 +272,17 @@ export function SpecialNeedsSupportEditPage() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    if (!formData) return;
     const { name, value } = e.target;
     
     // Special handling for supportType to ensure proper typing
     if (name === 'supportType') {
       setFormData(prev => ({
-        ...prev!,
+        ...prev,
         [name]: value as any,
       }));
     } else {
       setFormData(prev => ({
-        ...prev!,
+        ...prev,
         [name]: name === 'academicYear' ? parseInt(value) || 0 : value,
       }));
     }
@@ -250,7 +300,7 @@ export function SpecialNeedsSupportEditPage() {
   // ---------------------- Adaptaciones ----------------------
   // Añade una nueva adaptación al estado del formulario y limpia el campo de entrada
   const handleAddAdaptation = () => {
-    if (!formData || !adaptation.trim()) return;
+    if (!adaptation.trim()) return;
 
     if (formData.adaptationsRequired.includes(adaptation.trim())) {
       showErrorAlert('Advertencia', 'Esta adaptación ya fue agregada.');
@@ -258,8 +308,8 @@ export function SpecialNeedsSupportEditPage() {
     }
 
     setFormData(prev => ({
-      ...prev!,
-      adaptationsRequired: [...prev!.adaptationsRequired, adaptation.trim()],
+      ...prev,
+      adaptationsRequired: [...prev.adaptationsRequired, adaptation.trim()],
     }));
     setAdaptation('');
   };
@@ -267,10 +317,9 @@ export function SpecialNeedsSupportEditPage() {
   // Eliminar una adaptación de la lista
 
   const handleRemoveAdaptation = (index: number) => {
-    if (!formData) return;
     setFormData(prev => ({
-      ...prev!,
-      adaptationsRequired: prev!.adaptationsRequired.filter((_, i) => i !== index),
+      ...prev,
+      adaptationsRequired: prev.adaptationsRequired.filter((_, i) => i !== index),
     }));
   };
 
@@ -278,7 +327,7 @@ export function SpecialNeedsSupportEditPage() {
   // Agregar un material de soporte a la lista
   
   const handleAddMaterial = () => {
-    if (!formData || !material.trim()) return;
+    if (!material.trim()) return;
 
     if (formData.supportMaterials.includes(material.trim())) {
       showErrorAlert('Advertencia', 'Este material ya fue agregado.');
@@ -286,24 +335,23 @@ export function SpecialNeedsSupportEditPage() {
     }
 
     setFormData(prev => ({
-      ...prev!,
-      supportMaterials: [...prev!.supportMaterials, material.trim()],
+      ...prev,
+      supportMaterials: [...prev.supportMaterials, material.trim()],
     }));
     setMaterial('');
   };
 
   const handleRemoveMaterial = (index: number) => {
-    if (!formData) return;
     setFormData(prev => ({
-      ...prev!,
-      supportMaterials: prev!.supportMaterials.filter((_, i) => i !== index),
+      ...prev,
+      supportMaterials: prev.supportMaterials.filter((_, i) => i !== index),
     }));
   };
 
   // ---------------------- Guardar Cambios ----------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData || !id) return;
+    if (!id) return;
     
     // Validar todos los pasos antes de enviar
     const isStep1Valid = validateStep(1);
@@ -393,22 +441,7 @@ export function SpecialNeedsSupportEditPage() {
     );
   }
 
-  if (!formData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md text-center border border-red-300">
-          <h3 className="text-lg font-semibold text-red-600 mb-2">Error</h3>
-          <p className="text-gray-700 mb-4">No se pudo cargar la información del soporte.</p>
-          <button
-            onClick={() => navigate('/psychology/supports')}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-          >
-            Volver
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Remove the null check since formData is no longer nullable
 
   // ---------------------- Formulario ----------------------
   return (
@@ -478,7 +511,7 @@ export function SpecialNeedsSupportEditPage() {
                     onChange={(e) => {
                       handleChange(e);
                       // Reset student when classroom changes
-                      setFormData(prev => ({ ...prev!, studentId: '' }));
+                      setFormData(prev => ({ ...prev, studentId: '' }));
                     }}
                     required
                     disabled={!formData.institutionId}
@@ -500,7 +533,7 @@ export function SpecialNeedsSupportEditPage() {
                     onChange={(e) => {
                       handleChange(e);
                       // Reset classroom and student when institution changes
-                      setFormData(prev => ({ ...prev!, classroomId: '', studentId: '' }));
+                      setFormData(prev => ({ ...prev, classroomId: '', studentId: '' }));
                     }}
                     required
                     className="mt-1 w-full border border-gray-300 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"

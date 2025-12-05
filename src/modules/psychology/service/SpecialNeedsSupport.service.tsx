@@ -1,6 +1,6 @@
 import type { SpecialNeedsSupport } from '../models/specialNeedSupport';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://jubilant-engine-g444pxjvrx6c9pj4-9090.app.github.dev/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'https://micro-psychology-siguei.onrender.com/api/v1';
 
 // ------------------ LISTAR TODOS (solo activos) ------------------
 export const getAllSupports = async (): Promise<SpecialNeedsSupport[]> => {

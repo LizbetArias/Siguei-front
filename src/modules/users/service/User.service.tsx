@@ -5,7 +5,7 @@
 
 import type { User, CreateUserDto, UpdateUserDto, ApiResponse, UserFilters, UserStatus } from '../models/users.model'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://jubilant-engine-g444pxjvrx6c9pj4-9083.app.github.dev/api/v1'
+const API_URL = import.meta.env.VITE_API_URL || 'https://micro-user-siguei.onrender.com/api/v1'
 
 export const usersService = {
   async getAll(): Promise<User[]> {

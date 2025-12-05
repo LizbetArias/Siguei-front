@@ -17,8 +17,8 @@ import type {
 } from '../models/Institution.interface';
 
 // Configuración de la API
-const API_BASE_URL = 'https://jubilant-engine-g444pxjvrx6c9pj4-9080.app.github.dev/api/v1/institutions';
-const API_CLASSROOM_URL = 'https://jubilant-engine-g444pxjvrx6c9pj4-9080.app.github.dev/api/v1/classrooms';
+const API_BASE_URL = 'https://micro-institution-siguei.onrender.com/api/v1/institutions';
+const API_CLASSROOM_URL = 'https://micro-classroom-siguei.onrender.com/api/v1/classrooms';
 
 // Servicio para manejar las peticiones HTTP
 class InstitutionService {
